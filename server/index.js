@@ -4,20 +4,152 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
+// Load environment variables
 dotenv.config();
-console.log("🔑 Gemini API key starts with:", process.env.GEMINI_API_KEY?.slice(0, 10));
-
-// Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const MAX_FILES = 3;
-const SUPPORTED_EXTENSIONS = /\.(js|ts|py|jsx|tsx)$/i;
+const MAX_FILES = 10;
+const SUPPORTED_EXTENSIONS = /\.(js|jsx|ts|tsx|py|java|cpp|c|cs|go|rs|rb|php|kt|swift|scala|sh|bash|bat|pl|r|lua|html|css|scss|sass|json|yml|yaml|xml|md|txt|ini|env|conf|config|lock|dockerfile|makefile|gradle|gitignore)$/i;
 
-// 🔁 Recursively fetch code files from nested folders
+app.post("/api/summarize", async (req, res) => {
+  const { url } = req.body;
+  if (!url || !url.includes("github.com")) {
+    return res.status(400).json({ error: "Invalid GitHub URL." });
+  }
+
+  const repoPath = url.split("github.com/")[1].replace(/\/$/, "");
+  const [owner, repo] = repoPath.split("/");
+
+  try {
+    // GitHub metadata
+    const repoMeta = await axios.get(`https://api.github.com/repos/${owner}/${repo}`);
+    const repoLanguages = await axios.get(`https://api.github.com/repos/${repoPath}/languages`);
+
+    const {
+      name,
+      description,
+      stargazers_count,
+      forks_count,
+      language,
+      owner: { login: ownerLogin, avatar_url }
+    } = repoMeta.data;
+
+    const readme = await getReadme(repoPath);
+    let input = "";
+
+    if (readme) {
+      const readmeContent = await axios.get(readme.download_url);
+      input = readmeContent.data.trim();
+    }
+
+    // Fallback to source code if README too small
+    if (!input || input.length < 30) {
+      const files = await collectCodeFiles("", repoPath, []);
+      if (files.length === 0) {
+        return res.json({
+          summary: "No files were found in the repository. Make sure the repo is public and contains valid source files.",
+          metadata: {
+            name,
+            description,
+            stargazers: stargazers_count,
+            forks: forks_count,
+            language,
+            languages: repoLanguages.data,
+            html_url: `https://github.com/${repoPath}`,
+            owner: {
+              login: ownerLogin,
+              avatar_url
+            }
+          }
+        });
+      }
+
+      for (const file of files) {
+        const content = await axios.get(file.download_url);
+        input += `\n\n// FILE: ${file.path}\n${content.data}`;
+      }
+    }
+
+    if (input.length > 20000) {
+      input = input.slice(0, 20000);
+    }
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `
+You are an assistant that summarizes GitHub repositories.
+
+Here are several files from a repository. Your task is to understand the overall structure and purpose of the project by analyzing all the files collectively.
+
+Please provide a clear and concise overall summary of this project:
+- What the project does
+- What technologies or frameworks it uses
+- Any likely features or purpose
+
+Do NOT list files one-by-one. Focus on the overall architecture and goal.
+Don't just explain files. Infer what the project **does**, what **problem** it solves, and who might use it.
+
+--- START OF FILES ---
+${input}
+--- END OF FILES ---
+`;
+
+    const result = await model.generateContent([prompt]);
+    const summary = result.response.text();
+
+    if (!summary || summary.length < 20) {
+      return res.json({
+        summary: "Summary could not be generated from available files.",
+        metadata: {
+          name,
+          description,
+          stargazers: stargazers_count,
+          forks: forks_count,
+          language,
+          languages: repoLanguages.data,
+          html_url: `https://github.com/${repoPath}`,
+          owner: {
+            login: ownerLogin,
+            avatar_url
+          }
+        }
+      });
+    }
+
+    res.json({
+      summary,
+      metadata: {
+        name,
+        description,
+        stargazers: stargazers_count,
+        forks: forks_count,
+        language,
+        languages: repoLanguages.data,
+        html_url: `https://github.com/${repoPath}`,
+        owner: {
+          login: ownerLogin,
+          avatar_url
+        }
+      }
+    });
+  } catch (err) {
+    console.error("❌ Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch metadata or generate summary." });
+  }
+});
+
+async function getReadme(repoPath) {
+  try {
+    const response = await axios.get(`https://api.github.com/repos/${repoPath}/readme`);
+    return response.data;
+  } catch (err) {
+    return null;
+  }
+}
+
 async function collectCodeFiles(path = "", repoPath, collected = []) {
   if (collected.length >= MAX_FILES) return collected;
 
@@ -29,77 +161,27 @@ async function collectCodeFiles(path = "", repoPath, collected = []) {
     for (const item of items) {
       if (collected.length >= MAX_FILES) break;
 
-      if (item.type === "file" && SUPPORTED_EXTENSIONS.test(item.name)) {
+      if (
+        item.type === "file" &&
+        SUPPORTED_EXTENSIONS.test(item.name) &&
+        item.size < 100_000
+      ) {
         console.log("📄 Found file:", item.path);
         collected.push(item);
-      } else if (item.type === "dir") {
+      } else if (
+        item.type === "dir" &&
+        !["node_modules", "dist", ".git", ".next", "build"].includes(item.name)
+      ) {
+        console.log("📁 Entering folder:", item.path);
         await collectCodeFiles(item.path, repoPath, collected);
       }
     }
   } catch (err) {
-    console.warn("⚠️ Skipping path:", path, "| Error:", err.message);
+    console.warn("⚠️ Skipping path:", path, "|", err.message);
   }
 
   return collected;
 }
-
-app.post("/api/summarize", async (req, res) => {
-  const { url } = req.body;
-
-  if (!url || !url.includes("github.com")) {
-    return res.status(400).json({ error: "Invalid GitHub URL." });
-  }
-
-  const repoPath = url.split("github.com/")[1];
-
-  try {
-    // 🌐 Get root files of the repo
-    const rootContents = await axios.get(`https://api.github.com/repos/${repoPath}/contents`);
-    const files = rootContents.data;
-
-    // 📝 Check for README.md
-    const readme = files.find(f => /^readme\.md$/i.test(f.name));
-
-    let input = "";
-    let source = "";
-
-    if (readme) {
-      const readmeContent = await axios.get(readme.download_url);
-      input = readmeContent.data;
-      source = "README.md";
-    } else {
-      // 🧠 Recursively find top 3 code files
-      const codeFiles = await collectCodeFiles("", repoPath);
-
-      for (const file of codeFiles) {
-        const content = await axios.get(file.download_url);
-        input += `\nFile: ${file.path}\n${content.data}\n`;
-      }
-
-      source = "code";
-    }
-
-    if (!input.trim()) {
-      return res.json({ summary: "No README or usable code found in this repo." });
-    }
-
-    // 🤖 Call Gemini with prompt
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    const prompt =
-      source === "README.md"
-        ? `Summarize this GitHub project based on its README:\n${input}`
-        : `This GitHub repo doesn't have a README. Based on the following code files, explain what the project does:\n${input}`;
-
-    const result = await model.generateContent(prompt);
-    const summary = result.response.text();
-
-    res.json({ summary: summary || "No summary generated." });
-  } catch (err) {
-    console.error("Gemini Error:", err.message);
-    res.status(500).json({ error: "Failed to generate summary." });
-  }
-});
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`✅ GitPeek backend running at http://localhost:${PORT}`));
