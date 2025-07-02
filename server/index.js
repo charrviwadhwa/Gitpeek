@@ -8,7 +8,12 @@ dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: "https://gitpeek1.vercel.app", // your frontend domain
+  methods: ["GET", "POST"],
+  credentials: true
+}
+));
 app.use(express.json());
 
 const MAX_FILES = 10;
