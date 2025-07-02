@@ -16,7 +16,8 @@ const Home = () => {
     setError("");
 
     try {
-      const res = await fetch("https://gitpeek-backend.onrender.com/api/summarize", {
+      const res = await fetch("/api/summarize"
+, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: repoURL }),
