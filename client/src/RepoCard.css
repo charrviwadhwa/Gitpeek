@@ -1,0 +1,175 @@
+.repo-card {
+  width: 100%;
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 2rem;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: row;
+  gap: 2rem;
+  font-family: Inter, sans-serif;
+  color: #111;
+}
+
+.repo-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.repo-info {
+  flex: 1;
+}
+
+.repo-name a {
+  color: #111;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.repo-name a:hover {
+  text-decoration: underline;
+}
+
+.repo-description {
+  margin: 0.5rem 0 1rem;
+  color: #090303;
+}
+
+.repo-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.repo-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.repo-languages {
+  margin-bottom: 1rem;
+}
+
+.languages-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+
+.language-tag {
+  background: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  color: #111;
+}
+
+/* Markdown-formatted summary */
+.repo-summary {
+  background: #f9fafb;
+  border-left: 3px solid #22c55e;
+  padding: 20px;
+  border-radius: 10px;
+  color: #1f2937;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* Headings */
+.repo-summary h1,
+.repo-summary h2,
+.repo-summary h3 {
+  color: #16a34a;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.repo-summary h1 {
+  font-size: 1.5rem;
+}
+
+.repo-summary h2 {
+  font-size: 1.3rem;
+}
+
+.repo-summary h3 {
+  font-size: 1.1rem;
+}
+
+/* Paragraphs */
+.repo-summary p {
+  margin: 0.5rem 0;
+}
+
+/* Lists */
+.repo-summary ul,
+.repo-summary ol {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.repo-summary li {
+  margin: 0.3rem 0;
+}
+
+/* Inline code */
+.repo-summary code {
+  background: rgba(34, 197, 94, 0.1);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #15803d;
+}
+
+/* Code blocks */
+.repo-summary pre {
+  background: #111827;
+  color: #08142b;
+  padding: 10px;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+/* Links */
+.repo-summary a {
+  color: #22c55e;
+  text-decoration: underline;
+}
+
+.repo-summary a:hover {
+  text-decoration: none;
+}
+.language-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.language-tag {
+  display: flex;
+  align-items: center;
+  background: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  color: #111;
+  font-weight: 500;
+}
+
+/* .repo-summary * {
+  color: #1f2937 !important;
+} */

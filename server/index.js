@@ -4,7 +4,6 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Load environment variables
 dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -24,10 +23,13 @@ app.post("/api/summarize", async (req, res) => {
   const repoPath = url.split("github.com/")[1].replace(/\/$/, "");
   const [owner, repo] = repoPath.split("/");
 
+  const headers = {
+    Authorization: `token ${process.env.GITHUB_TOKEN}`,
+  };
+
   try {
-    // GitHub metadata
-    const repoMeta = await axios.get(`https://api.github.com/repos/${owner}/${repo}`);
-    const repoLanguages = await axios.get(`https://api.github.com/repos/${repoPath}/languages`);
+    const repoMeta = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+    const repoLanguages = await axios.get(`https://api.github.com/repos/${repoPath}/languages`, { headers });
 
     const {
       name,
@@ -35,20 +37,20 @@ app.post("/api/summarize", async (req, res) => {
       stargazers_count,
       forks_count,
       language,
-      owner: { login: ownerLogin, avatar_url }
+      owner: { login: ownerLogin, avatar_url },
+      html_url
     } = repoMeta.data;
 
-    const readme = await getReadme(repoPath);
     let input = "";
 
+    const readme = await getReadme(repoPath, headers);
     if (readme) {
       const readmeContent = await axios.get(readme.download_url);
       input = readmeContent.data.trim();
     }
 
-    // Fallback to source code if README too small
     if (!input || input.length < 30) {
-      const files = await collectCodeFiles("", repoPath, []);
+      const files = await collectCodeFiles("", repoPath, [], headers);
       if (files.length === 0) {
         return res.json({
           summary: "No files were found in the repository. Make sure the repo is public and contains valid source files.",
@@ -59,7 +61,7 @@ app.post("/api/summarize", async (req, res) => {
             forks: forks_count,
             language,
             languages: repoLanguages.data,
-            html_url: `https://github.com/${repoPath}`,
+            html_url,
             owner: {
               login: ownerLogin,
               avatar_url
@@ -110,7 +112,7 @@ ${input}
           forks: forks_count,
           language,
           languages: repoLanguages.data,
-          html_url: `https://github.com/${repoPath}`,
+          html_url,
           owner: {
             login: ownerLogin,
             avatar_url
@@ -128,34 +130,35 @@ ${input}
         forks: forks_count,
         language,
         languages: repoLanguages.data,
-        html_url: `https://github.com/${repoPath}`,
+        html_url,
         owner: {
           login: ownerLogin,
           avatar_url
         }
       }
     });
+
   } catch (err) {
     console.error("❌ Error:", err.message);
     res.status(500).json({ error: "Failed to fetch metadata or generate summary." });
   }
 });
 
-async function getReadme(repoPath) {
+async function getReadme(repoPath, headers) {
   try {
-    const response = await axios.get(`https://api.github.com/repos/${repoPath}/readme`);
+    const response = await axios.get(`https://api.github.com/repos/${repoPath}/readme`, { headers });
     return response.data;
   } catch (err) {
     return null;
   }
 }
 
-async function collectCodeFiles(path = "", repoPath, collected = []) {
+async function collectCodeFiles(path = "", repoPath, collected = [], headers) {
   if (collected.length >= MAX_FILES) return collected;
 
   try {
     const url = `https://api.github.com/repos/${repoPath}/contents/${path}`;
-    const response = await axios.get(url);
+    const response = await axios.get(url, { headers });
     const items = response.data;
 
     for (const item of items) {
@@ -166,14 +169,12 @@ async function collectCodeFiles(path = "", repoPath, collected = []) {
         SUPPORTED_EXTENSIONS.test(item.name) &&
         item.size < 100_000
       ) {
-        console.log("📄 Found file:", item.path);
         collected.push(item);
       } else if (
         item.type === "dir" &&
         !["node_modules", "dist", ".git", ".next", "build"].includes(item.name)
       ) {
-        console.log("📁 Entering folder:", item.path);
-        await collectCodeFiles(item.path, repoPath, collected);
+        await collectCodeFiles(item.path, repoPath, collected, headers);
       }
     }
   } catch (err) {

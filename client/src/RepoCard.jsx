@@ -1,85 +1,74 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
+import './RepoCard.css';
 
 function RepoCard({ summary, metadata }) {
   if (!metadata) return null;
 
   const {
-  name,
-  description,
-  owner,
-  stargazers,
-  forks,
-  languages,
-  html_url,
-} = metadata;
+    name,
+    description,
+    owner,
+    stargazers,
+    forks,
+    languages,
+    html_url,
+  } = metadata;
 
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: "800px",
-        margin: "2rem auto",
-        padding: "2rem",
-        borderRadius: "20px",
-        background: "white",
-        boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
-        display: "flex",
-        flexDirection: "row",
-        gap: "2rem",
-        fontFamily: "Inter, sans-serif",
-      }}
-    >
-      {/* Owner Avatar */}
+    <div className="repo-card">
+      {/* Avatar */}
       <img
-   src={owner?.avatar_url}
-  alt={`${owner?.login}'s avatar`}
-  style={{
-    width: "60px",
-    height: "60px",
-    borderRadius: "50%",
-    objectFit: "cover",
-    flexShrink: 0,
-  }}
-/>
+        src={owner?.avatar_url}
+        alt={`${owner?.login}'s avatar`}
+        className="repo-avatar"
+      />
 
       {/* Repo Info */}
-      <div style={{ flex: 1 }}>
-        <h2 style={{ marginBottom: "0.2rem" }}>
-          <a
-            href={html_url}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "#333", textDecoration: "none" }}
-          >
+      <div className="repo-info">
+        <h2 className="repo-name">
+          <a href={html_url} target="_blank" rel="noreferrer">
             {name}
           </a>
         </h2>
-        <p style={{ color: "#666", marginBottom: "1rem" }}>{description}</p>
+        <p className="repo-description">
+          {description || 'No description available'}
+        </p>
 
-        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-  <span>⭐ {stargazers}</span>
-  <span>🍴 {forks}</span>
+        <div className="repo-stats">
+          <div className="repo-stat">
+            <span>⭐</span>
+            <span>{stargazers || 0}</span>
+          </div>
+          <div className="repo-stat">
+            <span>🍴</span>
+            <span>{forks || 0}</span>
+          </div>
+        </div>
+
+        {languages && Object.keys(languages).length > 0 && (
+          <div className="repo-languages">
+  <strong className="block mb-1">Languages:</strong>
+  <div className="languages-list">
+    {Object.entries(languages).map(([lang, bytes]) => {
+      const iconClass = `devicon-${lang.toLowerCase()}-plain colored`;
+      return (
+        <span key={lang} className="language-tag">
+          <i className={iconClass} style={{ marginRight: '6px' }}></i>
+          {lang} ({bytes.toLocaleString()} bytes)
+        </span>
+      );
+    })}
+  </div>
 </div>
 
-        {/* Languages */}
-        {languages && Object.keys(languages).length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <strong>Languages:</strong>
-            <ul style={{ paddingLeft: "1rem", marginTop: "0.3rem" }}>
-              {Object.entries(languages).map(([lang, val]) => (
-                <li key={lang}>
-                  {lang} — {val.toLocaleString()} bytes
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
 
-        {/* Summary */}
-        <div>
-          <strong>Summary:</strong>
-          <p style={{ marginTop: "0.3rem", color: "#333" }}>{summary}</p>
-        </div>
+        <div className="repo-summary">
+  <ReactMarkdown>
+    {summary}
+  </ReactMarkdown>
+</div>
       </div>
     </div>
   );
