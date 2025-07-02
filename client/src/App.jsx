@@ -1,35 +1,48 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [repoURL, setRepoURL] = useState("");
+  const [summary, setSummary] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setSummary("");
+
+    const res = await fetch("http://localhost:5000/api/summarize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: repoURL }),
+    });
+
+    const data = await res.json();
+    setSummary(data.summary || "No summary generated.");
+    setLoading(false);
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
+      <h1>GitPeek</h1>
+      <input
+        type="text"
+        value={repoURL}
+        onChange={e => setRepoURL(e.target.value)}
+        placeholder="Paste GitHub repo URL"
+        style={{ width: "300px", padding: "0.5rem" }}
+      />
+      <button onClick={handleSubmit} style={{ marginLeft: "1rem" }}>
+        Generate Summary
+      </button>
+
+      {loading && <p>⏳ Generating...</p>}
+      {summary && (
+        <div style={{ marginTop: "2rem", background: "#f0f0f0", padding: "1rem" }}>
+          <h3>Summary:</h3>
+          <p>{summary}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;

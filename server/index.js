@@ -1,49 +1,105 @@
 const express = require("express");
-const cors = require("cors");
 const axios = require("axios");
+const cors = require("cors");
 const dotenv = require("dotenv");
-const { OpenAI } = require("openai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 dotenv.config();
+console.log("🔑 Gemini API key starts with:", process.env.GEMINI_API_KEY?.slice(0, 10));
+
+// Initialize Gemini client
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const MAX_FILES = 3;
+const SUPPORTED_EXTENSIONS = /\.(js|ts|py|jsx|tsx)$/i;
+
+// 🔁 Recursively fetch code files from nested folders
+async function collectCodeFiles(path = "", repoPath, collected = []) {
+  if (collected.length >= MAX_FILES) return collected;
+
+  try {
+    const url = `https://api.github.com/repos/${repoPath}/contents/${path}`;
+    const response = await axios.get(url);
+    const items = response.data;
+
+    for (const item of items) {
+      if (collected.length >= MAX_FILES) break;
+
+      if (item.type === "file" && SUPPORTED_EXTENSIONS.test(item.name)) {
+        console.log("📄 Found file:", item.path);
+        collected.push(item);
+      } else if (item.type === "dir") {
+        await collectCodeFiles(item.path, repoPath, collected);
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Skipping path:", path, "| Error:", err.message);
+  }
+
+  return collected;
+}
 
 app.post("/api/summarize", async (req, res) => {
   const { url } = req.body;
+
+  if (!url || !url.includes("github.com")) {
+    return res.status(400).json({ error: "Invalid GitHub URL." });
+  }
+
   const repoPath = url.split("github.com/")[1];
 
   try {
-    const repoContents = await axios.get(`https://api.github.com/repos/${repoPath}/contents`);
-    const files = repoContents.data.filter(f => f.type === "file" && f.name.match(/\.(js|py|ts|jsx)$/i)).slice(0, 3);
+    // 🌐 Get root files of the repo
+    const rootContents = await axios.get(`https://api.github.com/repos/${repoPath}/contents`);
+    const files = rootContents.data;
 
-    let code = "";
-    for (const file of files) {
-      const content = await axios.get(file.download_url);
-      code += `\nFile: ${file.name}\n${content.data}\n`;
+    // 📝 Check for README.md
+    const readme = files.find(f => /^readme\.md$/i.test(f.name));
+
+    let input = "";
+    let source = "";
+
+    if (readme) {
+      const readmeContent = await axios.get(readme.download_url);
+      input = readmeContent.data;
+      source = "README.md";
+    } else {
+      // 🧠 Recursively find top 3 code files
+      const codeFiles = await collectCodeFiles("", repoPath);
+
+      for (const file of codeFiles) {
+        const content = await axios.get(file.download_url);
+        input += `\nFile: ${file.path}\n${content.data}\n`;
+      }
+
+      source = "code";
     }
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a developer assistant that explains what a GitHub project does in simple terms.",
-        },
-        {
-          role: "user",
-          content: `Summarize this project's purpose:\n${code}`,
-        },
-      ],
-    });
+    if (!input.trim()) {
+      return res.json({ summary: "No README or usable code found in this repo." });
+    }
 
-    res.json({ summary: completion.choices[0].message.content.trim() });
+    // 🤖 Call Gemini with prompt
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt =
+      source === "README.md"
+        ? `Summarize this GitHub project based on its README:\n${input}`
+        : `This GitHub repo doesn't have a README. Based on the following code files, explain what the project does:\n${input}`;
+
+    const result = await model.generateContent(prompt);
+    const summary = result.response.text();
+
+    res.json({ summary: summary || "No summary generated." });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Failed to fetch and summarize the repository." });
+    console.error("Gemini Error:", err.message);
+    res.status(500).json({ error: "Failed to generate summary." });
   }
 });
 
-app.listen(5000, () => console.log("Server running at http://localhost:5000"));
+const PORT = 5000;
+app.listen(PORT, () => console.log(`✅ GitPeek backend running at http://localhost:${PORT}`));
