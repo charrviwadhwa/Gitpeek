@@ -15,6 +15,7 @@ app.use(cors({
 }
 ));
 app.use(express.json());
+app.options("*", cors());
 
 const MAX_FILES = 10;
 const SUPPORTED_EXTENSIONS = /\.(js|jsx|ts|tsx|py|java|cpp|c|cs|go|rs|rb|php|kt|swift|scala|sh|bash|bat|pl|r|lua|html|css|scss|sass|json|yml|yaml|xml|md|txt|ini|env|conf|config|lock|dockerfile|makefile|gradle|gitignore)$/i;
