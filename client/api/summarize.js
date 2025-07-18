@@ -2,7 +2,6 @@
 import axios from "axios";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const MAX_FILES = 10;
