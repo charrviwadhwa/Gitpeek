@@ -1,18 +1,18 @@
-// api/summarize.js
-import axios from "axios";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+const axios = require("axios");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 const MAX_FILES = 10;
-const SUPPORTED_EXTENSIONS = /\.(js|ts|jsx|tsx|py|java|cpp|c|cs|go|rs|rb|php|kt|swift|scala|sh|bash|bat|pl|r|lua|html|css|scss|json|yml|xml|md|txt|env|conf|lock|dockerfile|makefile|gradle|gitignore)$/i;
 
-export default async function handler(req, res) {
+const SUPPORTED_EXTENSIONS =
+  /\.(js|jsx|ts|tsx|py|java|cpp|c|cs|go|rs|rb|php|kt|swift|scala|sh|bash|bat|pl|r|lua|html|css|scss|sass|json|yml|yaml|xml|md|txt|ini|env|conf|config|lock|dockerfile|makefile|gradle|gitignore)$/i;
+
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Only POST requests allowed" });
   }
 
-  const { url } = req.body;
+  const { url } = req.body || {};
   if (!url || !url.includes("github.com")) {
     return res.status(400).json({ error: "Invalid GitHub URL." });
   }
@@ -25,8 +25,13 @@ export default async function handler(req, res) {
   };
 
   try {
-    const repoMeta = await axios.get(`https://api.github.com/repos/${repoPath}`, { headers });
-    const repoLanguages = await axios.get(`https://api.github.com/repos/${repoPath}/languages`, { headers });
+    const repoMeta = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers,
+    });
+    const repoLanguages = await axios.get(
+      `https://api.github.com/repos/${repoPath}/languages`,
+      { headers }
+    );
 
     const {
       name,
@@ -35,21 +40,36 @@ export default async function handler(req, res) {
       forks_count,
       language,
       owner: { login: ownerLogin, avatar_url },
-      html_url
+      html_url,
     } = repoMeta.data;
 
     let input = "";
-    const readme = await getReadme(repoPath, headers);
 
+    const readme = await getReadme(repoPath, headers);
     if (readme) {
       const readmeContent = await axios.get(readme.download_url);
-      input = readmeContent.data.trim();
+      input = (readmeContent.data || "").trim();
     }
 
     if (!input || input.length < 30) {
       const files = await collectCodeFiles("", repoPath, [], headers);
       if (files.length === 0) {
-        return res.json({ summary: "Repo is empty or private.", metadata: null });
+        return res.json({
+          summary: "No files were found or repository is private.",
+          metadata: {
+            name,
+            description,
+            stargazers: stargazers_count,
+            forks: forks_count,
+            language,
+            languages: repoLanguages.data,
+            html_url,
+            owner: {
+              login: ownerLogin,
+              avatar_url,
+            },
+          },
+        });
       }
 
       for (const file of files) {
@@ -74,6 +94,8 @@ Please provide a clear and concise overall summary of this project:
 - Any likely features or purpose
 
 Do NOT list files one-by-one. Focus on the overall architecture and goal.
+Don't just explain files. Infer what the project does, what problem it solves, and who might use it.
+
 --- START OF FILES ---
 ${input}
 --- END OF FILES ---
@@ -82,7 +104,26 @@ ${input}
     const result = await model.generateContent([prompt]);
     const summary = result.response.text();
 
-    res.json({
+    if (!summary || summary.length < 20) {
+      return res.json({
+        summary: "Summary could not be generated from available files.",
+        metadata: {
+          name,
+          description,
+          stargazers: stargazers_count,
+          forks: forks_count,
+          language,
+          languages: repoLanguages.data,
+          html_url,
+          owner: {
+            login: ownerLogin,
+            avatar_url,
+          },
+        },
+      });
+    }
+
+    return res.json({
       summary,
       metadata: {
         name,
@@ -94,33 +135,37 @@ ${input}
         html_url,
         owner: {
           login: ownerLogin,
-          avatar_url
-        }
-      }
+          avatar_url,
+        },
+      },
     });
   } catch (err) {
-    console.error("❌ API Error:", err.message);
-    return res.status(500).json({ error: "Failed to generate summary. Possibly a private or invalid repo." });
+    if (err.response?.status === 404 || err.response?.status === 403) {
+      return res.status(403).json({ error: "Repository is private or not accessible." });
+    }
+    console.error("Serverless error:", err.message);
+    return res.status(500).json({ error: "Failed to fetch metadata or generate summary." });
   }
-}
+};
 
-// Helper: Fetch README
 async function getReadme(repoPath, headers) {
   try {
-    const res = await axios.get(`https://api.github.com/repos/${repoPath}/readme`, { headers });
-    return res.data;
+    const response = await axios.get(`https://api.github.com/repos/${repoPath}/readme`, {
+      headers,
+    });
+    return response.data;
   } catch {
     return null;
   }
 }
 
-// Helper: Recursively collect files
 async function collectCodeFiles(path = "", repoPath, collected = [], headers) {
   if (collected.length >= MAX_FILES) return collected;
+
   try {
     const url = `https://api.github.com/repos/${repoPath}/contents/${path}`;
-    const res = await axios.get(url, { headers });
-    const items = res.data;
+    const response = await axios.get(url, { headers });
+    const items = response.data;
 
     for (const item of items) {
       if (collected.length >= MAX_FILES) break;
@@ -133,13 +178,14 @@ async function collectCodeFiles(path = "", repoPath, collected = [], headers) {
         collected.push(item);
       } else if (
         item.type === "dir" &&
-        !["node_modules", "dist", ".git", "build", ".next"].includes(item.name)
+        !["node_modules", "dist", ".git", ".next", "build"].includes(item.name)
       ) {
         await collectCodeFiles(item.path, repoPath, collected, headers);
       }
     }
   } catch (err) {
-    console.warn("⚠️ Skipping", path, "|", err.message);
+    console.warn("Skipping path:", path, "|", err.message);
   }
+
   return collected;
 }

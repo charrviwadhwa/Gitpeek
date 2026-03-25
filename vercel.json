@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "framework": "vite",
+  "devCommand": "npm --prefix client run dev -- --host",
+  "buildCommand": "npm --prefix client run build",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ]
+}
